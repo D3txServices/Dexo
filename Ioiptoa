@@ -158,6 +158,94 @@ local function Stroke(parent, color, thickness, transparency)
 	})
 end
 
+-- running accent streaks around a border (one shared loop drives all of them)
+local Streaks = {}
+local function AnimatedStroke(parent, thickness, transparency, speed)
+	local st = New("UIStroke", {
+		Color = "AccentColor", Thickness = thickness or 1.5, Transparency = transparency or 0,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = parent,
+	})
+	local g = New("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.85), NumberSequenceKeypoint.new(0.18, 0),
+			NumberSequenceKeypoint.new(0.36, 0.85), NumberSequenceKeypoint.new(0.64, 0.85),
+			NumberSequenceKeypoint.new(0.82, 0), NumberSequenceKeypoint.new(1, 0.85),
+		}),
+		Rotation = math.random(0, 359), Parent = st,
+	})
+	table.insert(Streaks, { g, speed or 60 })
+	return st, g
+end
+Connect(RunService.RenderStepped, function(dt)
+	for _, e in ipairs(Streaks) do
+		if e[1].Parent then e[1].Rotation = (e[1].Rotation + dt * e[2]) % 360 end
+	end
+end)
+
+-- soft glow: stacked faint accent strokes just outside the frame
+local Glows = {}
+local function Glow(parent, radius, layers, strength)
+	local out = {}
+	for i = 1, layers or 3 do
+		local f = New("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, i * 4, 1, i * 4),
+			BackgroundTransparency = 1, ZIndex = math.max(0, parent.ZIndex - 1), Parent = parent,
+		})
+		New("UICorner", { CornerRadius = UDim.new(0, (radius or 10) + i * 2), Parent = f })
+		local st = New("UIStroke", { Color = "AccentColor", Thickness = 2, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
+		table.insert(out, { st, (strength or 0.55) / i })
+	end
+	table.insert(Glows, out)
+	return out
+end
+local glowT = 0
+Connect(RunService.RenderStepped, function(dt)
+	glowT += dt
+	local pulse = 0.75 + math.sin(glowT * 2.2) * 0.25
+	for _, set in ipairs(Glows) do
+		for _, l in ipairs(set) do
+			if l[1].Parent then l[1].Transparency = 1 - l[2] * pulse * (l.mult or 1) end
+		end
+	end
+end)
+
+-- icons drawn with frames (the font has no glyphs for chevrons, magnifier, etc.)
+local function Line(parent, pos, size, rot, color)
+	local f = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = pos, Size = size, Rotation = rot or 0,
+		BackgroundColor3 = color or "SubFontColor", BorderSizePixel = 0, Parent = parent,
+	})
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = f })
+	return f
+end
+local function Chevron(parent, size, color)
+	local c = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(size or 10, size or 10),
+		BackgroundTransparency = 1, Parent = parent,
+	})
+	local w = (size or 10) * 0.62
+	Line(c, UDim2.new(0.33, 0, 0.5, 0), UDim2.fromOffset(w, 2), 45, color)
+	Line(c, UDim2.new(0.67, 0, 0.5, 0), UDim2.fromOffset(w, 2), -45, color)
+	return c
+end
+local function SearchIcon(parent)
+	local c = New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1, Parent = parent })
+	local ring = New("Frame", { Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(10, 10), BackgroundTransparency = 1, Parent = c })
+	New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+	New("UIStroke", { Color = "SubFontColor", Thickness = 1.6, Parent = ring })
+	Line(c, UDim2.fromOffset(11.5, 11.5), UDim2.fromOffset(5, 2), 45)
+	return c
+end
+local function BoxIcon(parent, offset)
+	local b = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, offset or 0, 0.5, offset or 0), Size = UDim2.fromOffset(9, 9),
+		BackgroundTransparency = 1, Parent = parent,
+	})
+	New("UICorner", { CornerRadius = UDim.new(0, 2), Parent = b })
+	New("UIStroke", { Color = "SubFontColor", Thickness = 1.5, Parent = b })
+	return b
+end
+
 local function Pad(parent, l, r, t, b)
 	return New("UIPadding", {
 		PaddingLeft = UDim.new(0, l or 0), PaddingRight = UDim.new(0, r or l or 0),
@@ -340,7 +428,7 @@ local KeybindFrame = New("Frame", {
 	Parent = ScreenGui,
 })
 Corner(KeybindFrame, 12)
-Stroke(KeybindFrame, "OutlineColor", 1)
+AnimatedStroke(KeybindFrame, 1.2, 0.1, 70)
 Pad(KeybindFrame, 10, 10, 8, 10)
 List(KeybindFrame, 4)
 do
@@ -566,7 +654,7 @@ CreateColorPicker = function(_, Holder, Addons, idx, info)
 		BackgroundTransparency = 0.02, Visible = false, ZIndex = 400, Active = true, Parent = ScreenGui,
 	})
 	Corner(Pop, 14)
-	Stroke(Pop, "OutlineColor", 1)
+	AnimatedStroke(Pop, 1.4, 0, 80)
 	local PopScale = New("UIScale", { Scale = Library.DPIScale, Parent = Pop })
 	Pad(Pop, 14, 14, 10, 14)
 	List(Pop, 10)
@@ -624,7 +712,8 @@ CreateColorPicker = function(_, Holder, Addons, idx, info)
 		ClearTextOnFocus = false, ZIndex = 402, Parent = Field,
 	})
 	local CopyB = Btn({ AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(24, 24),
-		Text = "⧉", TextSize = 15, TextColor3 = "SubFontColor", ZIndex = 402, Parent = Field })
+		Text = "", ZIndex = 402, Parent = Field })
+	do local a = BoxIcon(CopyB, -2) a.ZIndex = 403 local b2 = BoxIcon(CopyB, 2) b2.ZIndex = 403 end
 
 	local function FieldText()
 		local c = CP.Value
@@ -1224,12 +1313,16 @@ function BaseGroupbox:AddSlider(idx, info)
 	end
 	local Fill = New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = "AccentColor", BorderSizePixel = 0, ZIndex = 2, Parent = Track })
 	Round(Fill)
+	New("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 0) }), Parent = Fill })
 	local Knob = New("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(4, 14),
 		BackgroundColor3 = WHITE, ZIndex = 3, Parent = Track,
 	})
 	Corner(Knob, 2)
+	local KnobGlow = Stroke(Knob, "AccentColor", 3, 0.6)
 	local Hit = Btn({ AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(1, 0, 0, 20), ZIndex = 4, Parent = Track })
+	Hit.MouseEnter:Connect(function() Tween(KnobGlow, { Transparency = 0.2 }, 0.15) end)
+	Hit.MouseLeave:Connect(function() Tween(KnobGlow, { Transparency = 0.6 }, 0.15) end)
 
 	local function RoundV(v)
 		local m = 10 ^ S.Rounding
@@ -1440,10 +1533,11 @@ function BaseGroupbox:AddDropdown(idx, info)
 		Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -40, 1, 0), TextSize = 13,
 		TextTruncate = Enum.TextTruncate.AtEnd, Parent = Main,
 	})
-	local Arrow = Text({
+	local Arrow = New("Frame", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(16, 16),
-		Text = "⌄", TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = "SubFontColor", Parent = Main,
+		BackgroundTransparency = 1, Parent = Main,
 	})
+	Chevron(Arrow, 10)
 
 	local ListFrame = New("Frame", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = AUTO_Y, BackgroundColor3 = "ComponentColor",
@@ -1656,7 +1750,9 @@ local function SectionHeader(parent, name, icon, order)
 			BackgroundTransparency = 1, Parent = Header,
 		})
 		Round(ring)
-		Stroke(ring, "SubFontColor", 1.5, 0.15)
+		local rs = Stroke(ring, "SubFontColor", 1.5, 0.15)
+		rs.Name = "RingStroke"
+		ring.Name = "Ring"
 	end
 	local Title = Text({ Position = UDim2.fromOffset(x, 0), Size = UDim2.new(1, -x - 26, 1, 0), Text = name or "", TextSize = 13, TextColor3 = "SubFontColor", TextTruncate = Enum.TextTruncate.AtEnd, Parent = Header })
 	return Header, Title
@@ -1674,7 +1770,17 @@ local function Card(column)
 		BackgroundTransparency = 0.05, LayoutOrder = 2, Parent = Wrap,
 	})
 	Corner(Box, 12)
-	Stroke(Box, "OutlineColor", 1, 0.45)
+	local bs = Stroke(Box, "OutlineColor", 1, 0.45)
+	Box.MouseEnter:Connect(function()
+		bs.Color = Scheme.AccentColor
+		Tween(bs, { Transparency = 0.3, Thickness = 1.4 }, 0.2)
+		Tween(Box, { BackgroundColor3 = Scheme.MainColor:Lerp(Scheme.AccentColor, 0.04) }, 0.2)
+	end)
+	Box.MouseLeave:Connect(function()
+		bs.Color = Scheme.OutlineColor
+		Tween(bs, { Transparency = 0.45, Thickness = 1 }, 0.2)
+		Tween(Box, { BackgroundColor3 = Scheme.MainColor }, 0.2)
+	end)
 	List(Box, 0)
 	return Box, Wrap
 end
@@ -1704,8 +1810,9 @@ local function CreateGroupbox(column, opts)
 	if not opts.DisableCollapsing then
 		local Col = Btn({
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -2, 0.5, 0), Size = UDim2.fromOffset(18, 18),
-			Text = "▾", TextSize = 12, TextColor3 = "SubFontColor", Parent = Header,
+			Text = "", Parent = Header,
 		})
+		Chevron(Col, 9)
 		function Groupbox:SetCollapsed(c)
 			Box.Visible = not c
 			Tween(Col, { Rotation = c and -90 or 0 }, 0.2)
@@ -1782,7 +1889,8 @@ function Library:CreateWindow(cfg)
 		Active = true, Visible = cfg.AutoShow ~= false, ClipsDescendants = false, Parent = ScreenGui,
 	})
 	Corner(Main, 16)
-	Stroke(Main, "OutlineColor", 1, 0.25)
+	AnimatedStroke(Main, 1.6, 0, 45)
+	Glow(Main, 16, 4, 0.5)
 	local Scale = New("UIScale", { Scale = Library.DPIScale, Parent = Main })
 	Library._main, Library._scale = Main, Scale
 	Library.Toggled = Main.Visible
@@ -1800,6 +1908,10 @@ function Library:CreateWindow(cfg)
 		Position = UDim2.fromOffset(24, 22), Size = UDim2.new(1, -32, 0, 28), Text = string.upper(cfg.Title or "Dexo Hub"),
 		FontFace = FONT_BOLD, TextSize = 21, TextColor3 = "Flash", TextTruncate = Enum.TextTruncate.AtEnd, Parent = Brand,
 	})
+	do
+		local ts = New("UIStroke", { Color = "AccentColor", Thickness = 2, Transparency = 0.7, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = TitleLabel })
+		Connect(RunService.RenderStepped, function() ts.Transparency = 0.62 + math.sin(os.clock() * 2.4) * 0.22 end)
+	end
 
 	local Nav = New("ScrollingFrame", {
 		Position = UDim2.fromOffset(12, 72), Size = UDim2.new(1, -24, 1, -72 - 52), BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -1831,7 +1943,11 @@ function Library:CreateWindow(cfg)
 	-- search
 	local SearchBox = New("Frame", { Position = UDim2.fromOffset(4, 16), Size = UDim2.new(0.5, -40, 0, 34), BackgroundColor3 = "MainColor", Parent = Top })
 	Corner(SearchBox, 10)
-	Text({ Position = UDim2.fromOffset(12, 0), Size = UDim2.fromOffset(18, 34), Text = "⌕", TextSize = 17, TextColor3 = "SubFontColor", TextXAlignment = Enum.TextXAlignment.Center, Parent = SearchBox })
+	do
+		local holder = New("Frame", { Position = UDim2.fromOffset(12, 0), Size = UDim2.fromOffset(18, 34), BackgroundTransparency = 1, Parent = SearchBox })
+		SearchIcon(holder)
+	end
+	local searchStroke = New("UIStroke", { Color = "OutlineColor", Thickness = 1, Transparency = 0.4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = SearchBox })
 	New("Frame", { Position = UDim2.fromOffset(36, 11), Size = UDim2.fromOffset(1, 12), BackgroundColor3 = "OutlineColor", BorderSizePixel = 0, Parent = SearchBox })
 	local Search = New("TextBox", {
 		Position = UDim2.fromOffset(46, 0), Size = UDim2.new(1, -54, 1, 0), BackgroundTransparency = 1, Text = "",
@@ -1839,6 +1955,8 @@ function Library:CreateWindow(cfg)
 		TextColor3 = "FontColor", FontFace = FONT_MED, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
 		ClearTextOnFocus = false, Parent = SearchBox,
 	})
+	Search.Focused:Connect(function() searchStroke.Color = Scheme.AccentColor Tween(searchStroke, { Transparency = 0 }, 0.15) end)
+	Search.FocusLost:Connect(function() searchStroke.Color = Scheme.OutlineColor Tween(searchStroke, { Transparency = 0.4 }, 0.15) end)
 
 	-- user block (right)
 	local Av = New("ImageLabel", {
@@ -1846,7 +1964,7 @@ function Library:CreateWindow(cfg)
 		BackgroundColor3 = "ComponentColor", Parent = Top,
 	})
 	Round(Av)
-	Stroke(Av, "OutlineColor", 1)
+	AnimatedStroke(Av, 1.5, 0, 120)
 	task.spawn(function()
 		local ok, img = pcall(Players.GetUserThumbnailAsync, Players, LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
 		if ok then Av.Image = img end
@@ -1875,7 +1993,8 @@ function Library:CreateWindow(cfg)
 		b.MouseLeave:Connect(function() Tween(b, { BackgroundTransparency = 1, TextColor3 = Scheme.SubFontColor }, 0.12) end)
 		return b
 	end
-	local MaxB = WinBtn("⤢", 1)
+	local MaxB = WinBtn("", 1)
+	BoxIcon(MaxB)
 	local CloseB = WinBtn("×", 2)
 
 	-- breadcrumb + version
@@ -1889,6 +2008,18 @@ function Library:CreateWindow(cfg)
 		task.spawn(function()
 			local ok, inf = pcall(MarketplaceService.GetProductInfo, MarketplaceService, game.PlaceId)
 			if not cfg.Version and not cfg.GameName then Version.Text = (ok and inf and inf.Name) or "" end
+		end)
+	end
+
+	do
+		local L = New("Frame", { Position = UDim2.fromOffset(4, 58), Size = UDim2.new(1, -24, 0, 1), BackgroundColor3 = "AccentColor", BorderSizePixel = 0, Parent = Content })
+		local g = New("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.15), NumberSequenceKeypoint.new(1, 1) }), Parent = L })
+		local D = New("Frame", { Position = UDim2.new(0, SIDE, 0, 18), Size = UDim2.new(0, 1, 1, -36), BackgroundColor3 = "AccentColor", BorderSizePixel = 0, Parent = Main })
+		local g2 = New("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }), Parent = D })
+		Connect(RunService.RenderStepped, function()
+			local t = os.clock()
+			g.Offset = Vector2.new(math.sin(t * 1.1) * 0.45, 0)
+			g2.Offset = Vector2.new(0, math.sin(t * 0.9 + 1) * 0.4)
 		end)
 	end
 
@@ -1958,6 +2089,16 @@ function Library:CreateWindow(cfg)
 		List(Item, 2)
 		local TabBtn = Btn({ Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = "MainColor", BackgroundTransparency = 1, LayoutOrder = 1, Parent = Item })
 		Corner(TabBtn, 10)
+		local TabStroke = New("UIStroke", { Color = "AccentColor", Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = TabBtn })
+		New("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 0.85) }), Parent = TabStroke })
+		local TabBar = New("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.fromOffset(3, 0),
+			BackgroundColor3 = "AccentColor", BorderSizePixel = 0, ZIndex = 3, Parent = TabBtn,
+		})
+		Round(TabBar)
+		local TabFill = New("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = "AccentColor", BackgroundTransparency = 1, BorderSizePixel = 0, Parent = TabBtn })
+		Corner(TabFill, 10)
+		New("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.82), NumberSequenceKeypoint.new(1, 1) }), Parent = TabFill })
 		local Icon
 		if IsAsset(icon) then
 			Icon = New("ImageLabel", {
@@ -2014,13 +2155,25 @@ function Library:CreateWindow(cfg)
 		local function MarkSection(sec)
 			activeSec = sec
 			for _, s in ipairs(Tab._sections) do
-				Tween(s.Btn, { TextColor3 = s == sec and Scheme.FontColor or Scheme.SubFontColor }, 0.15)
+				local on = s == sec
+				Tween(s.Btn, { TextColor3 = on and Scheme.FontColor or Scheme.SubFontColor }, 0.15)
+				if s.Dot then Tween(s.Dot, { Size = on and UDim2.fromOffset(5, 5) or UDim2.fromOffset(0, 0) }, 0.2, Enum.EasingStyle.Back) end
+				if s.Ring then
+					s.Ring.Color = on and Scheme.AccentColor or Scheme.SubFontColor
+					if s.Glow then for _, l in ipairs(s.Glow) do l.mult = on and 1 or 0 end end
+				end
 			end
 			Crumb(sec)
 		end
 
 		local function AddSection(secName, wrap)
 			local sec = { Name = secName or ("Section " .. (#Tab._sections + 1)), Wrap = wrap, Containers = {} }
+			local ring = wrap:FindFirstChild("Ring", true)
+			if ring and ring:FindFirstChild("RingStroke") then
+				sec.Ring = ring.RingStroke
+				sec.Glow = Glow(ring, 6, 2, 0.7)
+				for _, l in ipairs(sec.Glow) do l.mult = 0 end
+			end
 			local B = Btn({
 				Size = UDim2.new(1, 0, 0, 26), Text = sec.Name, TextSize = 12, TextColor3 = "SubFontColor",
 				TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2028,6 +2181,11 @@ function Library:CreateWindow(cfg)
 			})
 			Pad(B, 36, 6, 0, 0)
 			sec.Btn = B
+			sec.Dot = New("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, -15, 0.5, 0), Size = UDim2.fromOffset(0, 0),
+				BackgroundColor3 = "AccentColor", BorderSizePixel = 0, Parent = B,
+			})
+			Round(sec.Dot)
 			B.MouseEnter:Connect(function() if activeSec ~= sec then Tween(B, { TextColor3 = Scheme.FontColor }, 0.12) end end)
 			B.MouseLeave:Connect(function() if activeSec ~= sec then Tween(B, { TextColor3 = Scheme.SubFontColor }, 0.12) end end)
 			B.MouseButton1Click:Connect(function()
@@ -2068,6 +2226,9 @@ function Library:CreateWindow(cfg)
 			Page.Position = UDim2.fromOffset(0, 10)
 			Tween(Page, { Position = UDim2.new() }, 0.3)
 			Tween(TabBtn, { BackgroundTransparency = 0 }, 0.2)
+			Tween(TabStroke, { Transparency = 0.35 }, 0.25)
+			Tween(TabBar, { Size = UDim2.fromOffset(3, 18) }, 0.3, Enum.EasingStyle.Back)
+			Tween(TabFill, { BackgroundTransparency = 0 }, 0.25)
 			Tween(Lbl, { TextColor3 = Scheme.FontColor }, 0.2)
 			if Icon:IsA("ImageLabel") then Tween(Icon, { ImageColor3 = Scheme.AccentColor }, 0.2) else Icon.UIStroke.Color = Scheme.AccentColor end
 			Crumb(activeSec)
@@ -2077,6 +2238,9 @@ function Library:CreateWindow(cfg)
 			Page.Visible = false
 			Tree.Visible = false
 			Tween(TabBtn, { BackgroundTransparency = 1 }, 0.2)
+			Tween(TabStroke, { Transparency = 1 }, 0.2)
+			Tween(TabBar, { Size = UDim2.fromOffset(3, 0) }, 0.2)
+			Tween(TabFill, { BackgroundTransparency = 1 }, 0.2)
 			Tween(Lbl, { TextColor3 = Scheme.SubFontColor }, 0.2)
 			if Icon:IsA("ImageLabel") then Tween(Icon, { ImageColor3 = Scheme.SubFontColor }, 0.2) else Icon.UIStroke.Color = Scheme.SubFontColor end
 		end
@@ -2209,7 +2373,7 @@ function Library:Notify(a, b)
 		BackgroundColor3 = "BackgroundColor", BackgroundTransparency = 0.08, Parent = Wrap,
 	})
 	Corner(Card, 12)
-	Stroke(Card, "OutlineColor", 1, 0.1)
+	AnimatedStroke(Card, 1.2, 0, 90)
 
 	local Bar = New("Frame", { Position = UDim2.fromOffset(6, 8), Size = UDim2.new(0, 3, 0, 26), BackgroundColor3 = "AccentColor", BorderSizePixel = 0, Parent = Card })
 	Round(Bar)
@@ -2263,7 +2427,7 @@ function Library:SetWatermark(text)
 			BackgroundColor3 = "BackgroundColor", BackgroundTransparency = 0.15, Active = true, Parent = ScreenGui,
 		})
 		Corner(W, 10)
-		Stroke(W, "OutlineColor", 1)
+		AnimatedStroke(W, 1.2, 0, 60)
 		Pad(W, 8, 10, 0, 0)
 		List(W, 6, Enum.FillDirection.Horizontal, nil, Enum.VerticalAlignment.Center)
 		do local d = New("Frame", { Size = UDim2.fromOffset(8, 8), BackgroundColor3 = "Flash", LayoutOrder = 1, Parent = W }) Round(d) end
